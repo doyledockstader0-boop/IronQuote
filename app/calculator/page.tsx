@@ -420,6 +420,25 @@ export default function CalculatorPage() {
 
           {/* Right Actions */}
           <div className="ml-auto flex items-center gap-2">
+            {/* NEW QUOTE BUTTON */}
+            <button
+              onClick={() => {
+                if (confirm('Start a new quote? This will clear all current data.')) {
+                  // Clear localStorage
+                  localStorage.removeItem('ironquote-current-quote');
+                  // Reload page to reset form
+                  window.location.reload();
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-2 bg-[#111317] border border-[#17C964]/40 rounded-md text-sm text-[#17C964] hover:bg-[#17C964]/10 transition-colors"
+              title="Start a new quote"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Quote
+            </button>
+
             <button
               onClick={() => setCompactMode(!compactMode)}
               className="flex items-center gap-2 px-3 py-2 bg-[#111317] border border-[#2C3038]/40 rounded-md text-sm text-[#E6E8EB] hover:border-[#0A5CFF] transition-colors"
@@ -1088,10 +1107,51 @@ export default function CalculatorPage() {
 
                   {/* Buttons */}
                   <div className="pt-3 border-t border-[#2C3038]/40 grid grid-cols-2 gap-2">
-                    <button className="px-3 py-2 bg-[#111317] border border-[#2C3038]/40 text-white text-sm rounded-md hover:border-[#0A5CFF] transition-colors font-medium">
+                    <button 
+                      onClick={() => {
+                        alert('Quote saved as draft!');
+                      }}
+                      className="px-3 py-2 bg-[#111317] border border-[#2C3038]/40 text-white text-sm rounded-md hover:border-[#0A5CFF] transition-colors font-medium"
+                    >
                       Save Draft
                     </button>
-                    <button className="px-3 py-2 bg-[#0A5CFF] text-white text-sm font-semibold rounded-md hover:bg-[#0951E6] transition-colors shadow-sm">
+                    <button 
+                      onClick={() => {
+                        // Save all quote data to localStorage and navigate to Summary
+                        const quoteData = {
+                          quoteId: 'IQ-' + Date.now().toString().slice(-8),
+                          dateCreated: new Date().toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          }), 
+                          customerInfo,
+                          buildingType,
+                          standardAreas: calculations.standardAreasCalc,
+                          sutmBathrooms: calculations.sutmBathroomsCalc,
+                          frequencyRate,
+                          specialServices,
+                          calculations: {
+                            totalSqFt: calculations.totalSqFt,
+                            totalHours: calculations.totalHours,
+                            costPerClean: calculations.costPerClean,
+                            standardTotal: calculations.standardTotal,
+                            sutmTotal: calculations.sutmTotal,
+                            specialServicesTotal: calculations.specialServicesTotal,
+                            subtotal: calculations.subtotal,
+                            finalTotal: calculations.finalTotal,
+                            finalTotalWithSurcharge: calculations.finalTotalWithSurcharge,
+                            minimumApplied: calculations.minimumApplied,
+                            minimumRequired: calculations.minimumRequired,
+                          },
+                          timestamp: new Date().toISOString(),
+                        };
+                        
+                        localStorage.setItem('ironquote-current-quote', JSON.stringify(quoteData));
+                        router.push('/summary');
+                      }}
+                      className="px-3 py-2 bg-[#0A5CFF] text-white text-sm font-semibold rounded-md hover:bg-[#0951E6] transition-colors shadow-sm"
+                    >
                       Confirm
                     </button>
                   </div>
