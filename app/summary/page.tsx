@@ -50,6 +50,11 @@ interface SpecialService {
   checked: boolean;
 }
 
+interface FrequencyRate {
+  frequency: number;
+  hourlyRate: number;
+}
+
 interface QuoteData {
   quoteId: string;
   dateCreated: string;
@@ -58,8 +63,7 @@ interface QuoteData {
   standardAreas: StandardArea[];
   sutmBathrooms: SUTMBathroom[];
   specialServices: SpecialService[];
-  frequency: number;
-  hourlyRate: number;
+  frequencyRate: FrequencyRate;  // FIXED: Now expects frequencyRate object
   calculations: {
     totalSqFt: number;
     totalHours: number;
@@ -82,19 +86,6 @@ interface QuoteData {
 
 export default function PreQuoteSummary() {
   const router = useRouter();
-// Load quote data from localStorage
-  useEffect(() => {
-    const savedQuote = localStorage.getItem('ironquote-current-quote');
-    if (savedQuote) {
-      try {
-        const parsed = JSON.parse(savedQuote);
-        setQuoteData(parsed);
-      } catch (error) {
-        console.error('Error loading quote data:', error);
-      }
-    }
-  }, []);
-
 
   // Mock data - In production, this would come from route params or state
   const [quoteData, setQuoteData] = useState<QuoteData>({
@@ -156,8 +147,10 @@ export default function PreQuoteSummary() {
       { id: '1', name: 'Window Cleaning', price: 150, checked: true },
       { id: '2', name: 'Carpet Cleaning', price: 75, checked: false },
     ],
-    frequency: 3,
-    hourlyRate: 30,
+    frequencyRate: {  // FIXED: Now stores as object
+      frequency: 3,
+      hourlyRate: 30
+    },
     calculations: {
       totalSqFt: 1450,
       totalHours: 1.39,
@@ -173,6 +166,20 @@ export default function PreQuoteSummary() {
       finalTotalWithSurcharge: 585.00,
     },
   });
+
+  // Load quote data from localStorage
+  useEffect(() => {
+    const savedQuote = localStorage.getItem('ironquote-current-quote');
+    if (savedQuote) {
+      try {
+        const parsed = JSON.parse(savedQuote);
+        setQuoteData(parsed);
+        console.log('✅ Loaded quote data from localStorage:', parsed);
+      } catch (error) {
+        console.error('Error loading quote data:', error);
+      }
+    }
+  }, []);
 
   const handleBack = () => {
     router.push('/calculator');
@@ -304,11 +311,11 @@ export default function PreQuoteSummary() {
             </div>
             <div className="bg-[#111317] border border-[#2C3038]/40 rounded-lg p-4">
               <div className="text-xs uppercase tracking-wide text-[#7A7F87] mb-1">Frequency</div>
-              <div className="text-2xl font-bold text-white">{quoteData.frequency}x/week</div>
+              <div className="text-2xl font-bold text-white">{quoteData.frequencyRate.frequency}x/week</div>
             </div>
             <div className="bg-[#111317] border border-[#2C3038]/40 rounded-lg p-4">
               <div className="text-xs uppercase tracking-wide text-[#7A7F87] mb-1">Labor Rate</div>
-              <div className="text-2xl font-bold text-white">${quoteData.hourlyRate}/hr</div>
+              <div className="text-2xl font-bold text-white">${quoteData.frequencyRate.hourlyRate}/hr</div>
             </div>
             <div className="bg-[#111317] border border-[#2C3038]/40 rounded-lg p-4">
               <div className="text-xs uppercase tracking-wide text-[#7A7F87] mb-1">Hours/Clean</div>
@@ -505,7 +512,7 @@ export default function PreQuoteSummary() {
           <div className="flex justify-between items-center pt-6 border-t-2 border-[#0A5CFF]/30">
             <div>
               <div className="text-sm uppercase tracking-wide text-[#7A7F87] mb-1">Monthly Total</div>
-              <div className="text-xs text-[#7A7F87]">{quoteData.frequency}x per week • ${quoteData.hourlyRate}/hr</div>
+              <div className="text-xs text-[#7A7F87]">{quoteData.frequencyRate.frequency}x per week • ${quoteData.frequencyRate.hourlyRate}/hr</div>
             </div>
             <div className="text-5xl font-bold text-[#0A5CFF]">
               ${quoteData.calculations.finalTotalWithSurcharge.toLocaleString(undefined, { maximumFractionDigits: 2 })}
