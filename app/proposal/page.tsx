@@ -43,6 +43,11 @@ interface SUTMBathroom {
   monthlyCost: number;
 }
 
+interface FrequencyRate {
+  frequency: number;
+  hourlyRate: number;
+}
+
 interface QuoteData {
   quoteId: string;
   dateCreated: string;
@@ -50,8 +55,7 @@ interface QuoteData {
   buildingType: string;
   standardAreas: StandardArea[];
   sutmBathrooms: SUTMBathroom[];
-  frequency: number;
-  hourlyRate: number;
+  frequencyRate: FrequencyRate;  // FIXED: Now expects frequencyRate object
   calculations: {
     totalSqFt: number;
     totalHours: number;
@@ -93,8 +97,10 @@ export default function ProposalPage() {
     buildingType: 'Medical',
     standardAreas: [],
     sutmBathrooms: [],
-    frequency: 3,
-    hourlyRate: 30,
+    frequencyRate: {  // FIXED: Now stores as object
+      frequency: 3,
+      hourlyRate: 30
+    },
     calculations: {
       totalSqFt: 0,
       totalHours: 0,
@@ -109,6 +115,7 @@ export default function ProposalPage() {
       try {
         const parsed = JSON.parse(savedQuote);
         setQuoteData(parsed);
+        console.log('✅ Loaded quote data from localStorage:', parsed);
       } catch (error) {
         console.error('Error loading quote data:', error);
       }
@@ -129,7 +136,7 @@ export default function ProposalPage() {
           customerInfo: quoteData.customerInfo,
           buildingType: quoteData.buildingType,
           totalSqFt: quoteData.calculations.totalSqFt,
-          frequency: quoteData.frequency,
+          frequency: quoteData.frequencyRate.frequency,
           monthlyTotal: quoteData.calculations.finalTotalWithSurcharge,
         }),
       });
@@ -147,7 +154,7 @@ export default function ProposalPage() {
       console.error('Error generating AI content:', error);
       setAiContent({
         introduction: `Dear ${quoteData.customerInfo.firstName} ${quoteData.customerInfo.lastName},\n\nThank you for considering JanPro for your commercial cleaning needs at ${quoteData.customerInfo.businessName}. We are pleased to present this comprehensive proposal for professional cleaning services.`,
-        serviceDescription: `Our team will provide thorough cleaning services ${quoteData.frequency} times per week, covering ${quoteData.calculations.totalSqFt} square feet of your ${quoteData.buildingType.toLowerCase()} facility. We use industry-leading techniques and eco-friendly products to ensure a pristine environment.`,
+        serviceDescription: `Our team will provide thorough cleaning services ${quoteData.frequencyRate.frequency} times per week, covering ${quoteData.calculations.totalSqFt} square feet of your ${quoteData.buildingType.toLowerCase()} facility. We use industry-leading techniques and eco-friendly products to ensure a pristine environment.`,
         valueProposition: 'With MedMetrix certification and years of experience in medical facility cleaning, we maintain the highest standards of cleanliness and safety. Our trained professionals follow strict protocols to create a healthy environment for your staff and patients.',
       });
     } finally {
@@ -277,7 +284,7 @@ export default function ProposalPage() {
             </div>
             <div className="bg-[#111317] border border-[#2C3038]/40 rounded-lg p-4">
               <div className="text-xs uppercase tracking-wide text-[#7A7F87] mb-1">Frequency</div>
-              <div className="text-2xl font-bold text-white">{quoteData.frequency}x</div>
+              <div className="text-2xl font-bold text-white">{quoteData.frequencyRate.frequency}x</div>
               <div className="text-xs text-[#7A7F87]">per week</div>
             </div>
             <div className="bg-[#111317] border border-[#2C3038]/40 rounded-lg p-4">
@@ -287,7 +294,7 @@ export default function ProposalPage() {
             </div>
             <div className="bg-[#111317] border border-[#2C3038]/40 rounded-lg p-4">
               <div className="text-xs uppercase tracking-wide text-[#7A7F87] mb-1">Hours/Week</div>
-              <div className="text-2xl font-bold text-[#0A5CFF]">{(quoteData.calculations.totalHours * quoteData.frequency).toFixed(1)}</div>
+              <div className="text-2xl font-bold text-[#0A5CFF]">{(quoteData.calculations.totalHours * quoteData.frequencyRate.frequency).toFixed(1)}</div>
               <div className="text-xs text-[#7A7F87]">hours</div>
             </div>
           </div>
@@ -347,7 +354,7 @@ export default function ProposalPage() {
             <div>
               <div className="text-sm uppercase tracking-wide text-[#7A7F87] mb-2">Monthly Investment</div>
               <div className="text-xs text-[#7A7F87]">
-                {quoteData.frequency}x per week • Professional service • MedMetrix certified
+                {quoteData.frequencyRate.frequency}x per week • Professional service • MedMetrix certified
               </div>
             </div>
             <div className="text-6xl font-bold text-[#0A5CFF]">
@@ -360,7 +367,7 @@ export default function ProposalPage() {
               <div>
                 <div className="text-xs text-[#7A7F87] mb-1">Per Cleaning</div>
                 <div className="text-xl font-semibold text-white">
-                  ${(quoteData.calculations.finalTotalWithSurcharge / (quoteData.frequency * 4.33)).toFixed(2)}
+                  ${(quoteData.calculations.finalTotalWithSurcharge / (quoteData.frequencyRate.frequency * 4.33)).toFixed(2)}
                 </div>
               </div>
               <div>
