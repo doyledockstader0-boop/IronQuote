@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ============================================================================
@@ -72,8 +72,7 @@ export default function ProposalPage() {
     valueProposition: '',
   });
 
-  // Mock data - In production, this would come from route params or state
-  const quoteData: QuoteData = {
+  const [quoteData, setQuoteData] = useState<QuoteData>({
     quoteId: 'IQ-' + Date.now().toString().slice(-8),
     dateCreated: new Date().toLocaleDateString('en-US', { 
       year: 'numeric', 
@@ -92,50 +91,29 @@ export default function ProposalPage() {
       phone: '(801) 555-0123',
     },
     buildingType: 'Medical',
-    standardAreas: [
-      {
-        id: '1',
-        areaName: 'Lobby',
-        totalSqFt: 500,
-        floorType: 'Tile',
-        soilLevel: 'Medium',
-        runRate: 1500,
-        hours: 0.33,
-        monthlyCost: 42.87,
-      },
-      {
-        id: '2',
-        areaName: 'Hallways',
-        totalSqFt: 800,
-        floorType: 'VCT',
-        soilLevel: 'Heavy',
-        runRate: 1200,
-        hours: 0.67,
-        monthlyCost: 86.91,
-      },
-    ],
-    sutmBathrooms: [
-      {
-        id: '1',
-        bathroomName: 'Main Restroom',
-        totalSqFt: 150,
-        floorType: 'Tile',
-        soilLevel: 'Heavy',
-        runRate: 800,
-        fixtureCount: 4,
-        minutesPerFixture: 3.0,
-        totalHours: 0.39,
-        monthlyCost: 50.57,
-      },
-    ],
+    standardAreas: [],
+    sutmBathrooms: [],
     frequency: 3,
     hourlyRate: 30,
     calculations: {
-      totalSqFt: 1450,
-      totalHours: 1.39,
-      finalTotalWithSurcharge: 585.00,
-    },
-  };
+      totalSqFt: 0,
+      totalHours: 0,
+      finalTotalWithSurcharge: 0,
+    }
+  });
+
+  // Load quote data from localStorage
+  useEffect(() => {
+    const savedQuote = localStorage.getItem('ironquote-current-quote');
+    if (savedQuote) {
+      try {
+        const parsed = JSON.parse(savedQuote);
+        setQuoteData(parsed);
+      } catch (error) {
+        console.error('Error loading quote data:', error);
+      }
+    }
+  }, []);
 
   // Generate AI content using Claude
   const generateAIContent = async () => {
@@ -167,7 +145,6 @@ export default function ProposalPage() {
       }
     } catch (error) {
       console.error('Error generating AI content:', error);
-      // Use fallback content if API fails
       setAiContent({
         introduction: `Dear ${quoteData.customerInfo.firstName} ${quoteData.customerInfo.lastName},\n\nThank you for considering JanPro for your commercial cleaning needs at ${quoteData.customerInfo.businessName}. We are pleased to present this comprehensive proposal for professional cleaning services.`,
         serviceDescription: `Our team will provide thorough cleaning services ${quoteData.frequency} times per week, covering ${quoteData.calculations.totalSqFt} square feet of your ${quoteData.buildingType.toLowerCase()} facility. We use industry-leading techniques and eco-friendly products to ensure a pristine environment.`,
@@ -179,12 +156,10 @@ export default function ProposalPage() {
   };
 
   const handleDownloadPDF = () => {
-    // PDF generation would go here
     alert('PDF download feature coming soon!');
   };
 
   const handleEmailProposal = () => {
-    // Email functionality would go here
     alert(`Email would be sent to: ${quoteData.customerInfo.email}`);
   };
 
@@ -193,7 +168,6 @@ export default function ProposalPage() {
       className="min-h-screen bg-[#000000] text-white"
       style={{ fontFamily: "'Work Sans', sans-serif" }}
     >
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-[#1C1F26] border-b border-[#2C3038]/40 backdrop-blur-sm shadow-lg print:hidden">
         <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -240,10 +214,7 @@ export default function ProposalPage() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-[1000px] mx-auto px-4 py-8">
-        
-        {/* Proposal Header */}
         <div className="bg-gradient-to-br from-[#1C1F26] to-[#111317] border border-[#0A5CFF]/30 rounded-xl p-8 mb-8">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -281,7 +252,6 @@ export default function ProposalPage() {
           </div>
         </div>
 
-        {/* AI-Generated Introduction */}
         {aiContent.introduction && (
           <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold text-white mb-4">Introduction</h2>
@@ -291,7 +261,6 @@ export default function ProposalPage() {
           </section>
         )}
 
-        {/* Service Overview */}
         <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-lg p-6 mb-6">
           <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
             <svg className="w-5 h-5 text-[#0A5CFF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +299,6 @@ export default function ProposalPage() {
           )}
         </section>
 
-        {/* Areas Included */}
         <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-lg p-6 mb-6">
           <h2 className="text-xl font-semibold text-white mb-4">Areas Included</h2>
           
@@ -363,7 +331,6 @@ export default function ProposalPage() {
           </div>
         </section>
 
-        {/* Value Proposition */}
         {aiContent.valueProposition && (
           <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold text-white mb-4">Why Choose Us</h2>
@@ -373,7 +340,6 @@ export default function ProposalPage() {
           </section>
         )}
 
-        {/* Investment Summary */}
         <section className="bg-gradient-to-br from-[#0A5CFF]/10 to-[#0951E6]/5 border-2 border-[#0A5CFF]/30 rounded-xl p-8 mb-6">
           <h2 className="text-2xl font-bold text-white mb-6">Investment Summary</h2>
           
@@ -413,7 +379,6 @@ export default function ProposalPage() {
           </div>
         </section>
 
-        {/* Terms & Conditions */}
         <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-lg p-6 mb-6">
           <h2 className="text-xl font-semibold text-white mb-4">Terms & Conditions</h2>
           <ul className="space-y-2 text-sm text-[#E6E8EB]">
@@ -450,7 +415,6 @@ export default function ProposalPage() {
           </ul>
         </section>
 
-        {/* Action Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 print:hidden">
           <button
             onClick={() => router.push('/summary')}
@@ -484,7 +448,6 @@ export default function ProposalPage() {
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-[#2C3038]/40 py-6 mt-12 print:hidden">
         <div className="max-w-[1000px] mx-auto px-4 text-center text-[#7A7F87] text-sm">
           IronQuote © {new Date().getFullYear()} — Professional proposals, powered by AI

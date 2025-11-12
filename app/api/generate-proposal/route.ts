@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
+import { checkRateLimit } from './rate-limiter';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

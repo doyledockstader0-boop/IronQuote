@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ============================================================================
@@ -82,9 +82,22 @@ interface QuoteData {
 
 export default function PreQuoteSummary() {
   const router = useRouter();
+// Load quote data from localStorage
+  useEffect(() => {
+    const savedQuote = localStorage.getItem('ironquote-current-quote');
+    if (savedQuote) {
+      try {
+        const parsed = JSON.parse(savedQuote);
+        setQuoteData(parsed);
+      } catch (error) {
+        console.error('Error loading quote data:', error);
+      }
+    }
+  }, []);
+
 
   // Mock data - In production, this would come from route params or state
-  const [quoteData] = useState<QuoteData>({
+  const [quoteData, setQuoteData] = useState<QuoteData>({
     quoteId: 'IQ-' + Date.now().toString().slice(-8),
     dateCreated: new Date().toLocaleDateString('en-US', { 
       year: 'numeric', 
@@ -172,7 +185,7 @@ export default function PreQuoteSummary() {
 
   const handleGenerateProposal = () => {
     // Navigate to proposal generation page
-    router.push('/proposal/generate');
+    router.push('/proposal');
   };
 
   const handlePrint = () => {

@@ -1,4 +1,5 @@
 {
-  "/api/generate-proposal/route": "app/api/generate-proposal/route.js",
-  "/proposal/page": "app/proposal/page.js"
+  "/calculator/page": "app/calculator/page.js",
+  "/proposal/page": "app/proposal/page.js",
+  "/summary/page": "app/summary/page.js"
 }
