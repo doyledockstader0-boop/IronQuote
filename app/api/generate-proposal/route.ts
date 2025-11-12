@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
     const { customerInfo, buildingType, totalSqFt, frequency, monthlyTotal } = body;
 
     // Get API key from environment variable
-    const apiKey = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+    const apiKey = process.env.ANTHROPIC_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
