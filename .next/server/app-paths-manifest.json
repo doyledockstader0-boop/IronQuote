@@ -1,4 +1,4 @@
 {
-  "/calculator/page": "app/calculator/page.js",
-  "/summary/page": "app/summary/page.js"
+  "/api/generate-proposal/route": "app/api/generate-proposal/route.js",
+  "/proposal/page": "app/proposal/page.js"
 }
