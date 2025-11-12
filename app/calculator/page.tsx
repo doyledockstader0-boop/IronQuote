@@ -99,7 +99,8 @@ const MONTHLY_MINIMUMS: Record<number, number> = {
 // MAIN COMPONENT
 // ============================================================================
 
-export default function CalculatorPage() { const router = useRouter();
+export default function CalculatorPage() {
+  const router = useRouter();
   // Theme state - DARK MODE ONLY for now
   const [compactMode, setCompactMode] = useState(false);
 
@@ -167,6 +168,30 @@ export default function CalculatorPage() { const router = useRouter();
     { id: '2', name: 'Window Cleaning', price: 150, checked: false },
     { id: '3', name: 'Floor Stripping & Waxing', price: 200, checked: false },
   ]);
+
+  // ============================================================================
+  // LOAD SAVED QUOTE DATA ON MOUNT - THIS FIXES THE BACK BUTTON BUG
+  // ============================================================================
+  useEffect(() => {
+    const savedQuote = localStorage.getItem('ironquote-current-quote');
+    if (savedQuote) {
+      try {
+        const data = JSON.parse(savedQuote);
+        
+        // Restore all form data
+        if (data.customerInfo) setCustomerInfo(data.customerInfo);
+        if (data.buildingType) setBuildingType(data.buildingType);
+        if (data.standardAreas) setStandardAreas(data.standardAreas);
+        if (data.sutmBathrooms) setSutmBathrooms(data.sutmBathrooms);
+        if (data.frequencyRate) setFrequencyRate(data.frequencyRate);
+        if (data.specialServices) setSpecialServices(data.specialServices);
+        
+        console.log('✅ Loaded saved quote data from localStorage');
+      } catch (error) {
+        console.error('Failed to load saved quote:', error);
+      }
+    }
+  }, []); // Empty dependency array = runs once on mount
 
   // ============================================================================
   // CALCULATIONS
@@ -419,12 +444,12 @@ export default function CalculatorPage() { const router = useRouter();
               onClick={() => {
                 // Save all quote data to localStorage
                 const quoteData = {
-                 quoteId: 'IQ-' + Date.now().toString().slice(-8),
-              dateCreated: new Date().toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              }), 
+                  quoteId: 'IQ-' + Date.now().toString().slice(-8),
+                  dateCreated: new Date().toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  }), 
                   customerInfo,
                   buildingType,
                   standardAreas: calculations.standardAreasCalc,
@@ -448,6 +473,7 @@ export default function CalculatorPage() { const router = useRouter();
                 };
                 
                 localStorage.setItem('ironquote-current-quote', JSON.stringify(quoteData));
+                console.log('💾 Saved quote data to localStorage');
                 router.push('/summary');
               }}
               className="flex items-center gap-2 px-4 py-2 bg-[#0A5CFF] text-white rounded-md text-sm font-semibold hover:bg-[#0951E6] transition-colors shadow-md"
