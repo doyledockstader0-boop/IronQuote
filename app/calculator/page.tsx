@@ -6,6 +6,13 @@ import { useRouter } from 'next/navigation';
 // TYPES & INTERFACES
 // ============================================================================
 
+// Add this NEW interface after line 8
+interface Photo {
+  id: string
+  data: string // base64
+  name: string
+  timestamp: number
+}
 interface CustomerInfo {
   firstName: string;
   lastName: string;
@@ -163,6 +170,14 @@ export default function CalculatorPage() {
     hourlyRate: 30,
   });
 
+  const [preferredCleaningDays, setPreferredCleaningDays] = useState<boolean[]>([
+    false, false, false, false, false, false, false // Mon, Tue, Wed, Thu, Fri, Sat, Sun
+  ]);
+  const [preferredCleaningTime, setPreferredCleaningTime] = useState<string>('');
+
+  const [siteNotes, setSiteNotes] = useState<string>('');
+  const [sitePhotos, setSitePhotos] = useState<Photo[]>([]);
+
   const [specialServices, setSpecialServices] = useState<SpecialService[]>([
     { id: '1', name: 'Carpet Cleaning', price: 75, checked: false },
     { id: '2', name: 'Window Cleaning', price: 150, checked: false },
@@ -185,6 +200,10 @@ export default function CalculatorPage() {
         if (data.sutmBathrooms) setSutmBathrooms(data.sutmBathrooms);
         if (data.frequencyRate) setFrequencyRate(data.frequencyRate);
         if (data.specialServices) setSpecialServices(data.specialServices);
+        if (data.preferredCleaningDays) setPreferredCleaningDays(data.preferredCleaningDays);
+        if (data.preferredCleaningTime) setPreferredCleaningTime(data.preferredCleaningTime);
+        if (data.siteNotes) setSiteNotes(data.siteNotes);
+        if (data.sitePhotos) setSitePhotos(data.sitePhotos);
         
         console.log('✅ Loaded saved quote data from localStorage');
       } catch (error) {
@@ -394,6 +413,51 @@ export default function CalculatorPage() {
     );
   };
 
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const fileArray = Array.from(files);
+    const remainingSlots = 10 - sitePhotos.length;
+    
+    if (fileArray.length > remainingSlots) {
+      alert(`Maximum 10 photos allowed. You can add ${remainingSlots} more photo(s).`);
+      e.target.value = '';
+      return;
+    }
+
+    fileArray.forEach((file) => {
+      if (sitePhotos.length >= 10) {
+        return;
+      }
+
+      if (!file.type.startsWith('image/')) {
+        alert(`${file.name} is not an image file. Please upload only image files.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        const newPhoto: Photo = {
+          id: Date.now().toString() + Math.random().toString(36).slice(2, 11),
+          data: dataUrl,
+          name: file.name,
+          timestamp: Date.now(),
+        };
+        setSitePhotos((prev) => [...prev, newPhoto]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Reset input
+    e.target.value = '';
+  };
+
+  const removePhoto = (id: string) => {
+    setSitePhotos((prev) => prev.filter((photo) => photo.id !== id));
+  };
+
   // ============================================================================
   // STYLES - EXACT MOCK FILE COLORS
   // ============================================================================
@@ -475,6 +539,10 @@ export default function CalculatorPage() {
                   sutmBathrooms: calculations.sutmBathroomsCalc,
                   frequencyRate,
                   specialServices,
+                  preferredCleaningDays,
+                  preferredCleaningTime,
+                  siteNotes,
+                  sitePhotos,
                   calculations: {
                     totalSqFt: calculations.totalSqFt,
                     totalHours: calculations.totalHours,
@@ -627,6 +695,86 @@ export default function CalculatorPage() {
                   onChange={(e) => updateCustomerInfo('email', e.target.value)}
                   className="w-full bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all placeholder-[#7A7F87]"
                 />
+              </div>
+            </section>
+
+            {/* Schedule & Access */}
+            <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-xl p-5 shadow-lg">
+              <h2 className="text-white font-semibold mb-4">Schedule & Access</h2>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[13px] text-[#E6E8EB]/80 mb-1">Cleaning Frequency</label>
+                    <select
+                      value={frequencyRate.frequency}
+                      onChange={(e) => setFrequencyRate({ ...frequencyRate, frequency: Number(e.target.value) })}
+                      className="w-full bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all"
+                    >
+                      {[1, 2, 3, 4, 5, 6, 7].map((freq) => (
+                        <option key={freq} value={freq}>{freq}x per week</option>
+                      ))}
+                    </select>
+                    {MONTHLY_MINIMUMS[frequencyRate.frequency] && (
+                      <p className="text-xs text-[#7A7F87] mt-1">
+                        Minimum: ${MONTHLY_MINIMUMS[frequencyRate.frequency]}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[13px] text-[#E6E8EB]/80 mb-1">Hourly Rate</label>
+                    <input
+                      type="number"
+                      list="hourly-rates"
+                      value={frequencyRate.hourlyRate || ''}
+                      onChange={(e) => setFrequencyRate({ ...frequencyRate, hourlyRate: Number(e.target.value) })}
+                      className="w-full bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all"
+                      min="15"
+                      max="100"
+                      step="0.5"
+                    />
+                    <datalist id="hourly-rates">
+                      {HOURLY_RATE_PRESETS.map((rate) => (
+                        <option key={rate} value={rate} />
+                      ))}
+                    </datalist>
+                    <p className="text-xs text-[#7A7F87] mt-1">Recommended: $20-$50/hr</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-[13px] text-[#E6E8EB]/80 mb-2">Preferred Cleaning Days</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => (
+                      <label
+                        key={day}
+                        className="flex items-center gap-2 px-3 py-2 bg-[#111317] border border-[#E6E8EB]/15 rounded-md cursor-pointer hover:border-[#0A5CFF] transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={preferredCleaningDays[index]}
+                          onChange={(e) => {
+                            const newDays = [...preferredCleaningDays];
+                            newDays[index] = e.target.checked;
+                            setPreferredCleaningDays(newDays);
+                          }}
+                          className="h-4 w-4 rounded border-[#2C3038] text-[#0A5CFF] focus:ring-[#0A5CFF] bg-[#111317]"
+                        />
+                        <span className="text-sm text-white">{day}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[13px] text-[#E6E8EB]/80 mb-1">Preferred Cleaning Time</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., After 6:00 PM"
+                    value={preferredCleaningTime}
+                    onChange={(e) => setPreferredCleaningTime(e.target.value)}
+                    className="w-full bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all placeholder-[#7A7F87]"
+                  />
+                </div>
               </div>
             </section>
 
@@ -959,45 +1107,90 @@ export default function CalculatorPage() {
               </div>
             </section>
 
-            {/* Frequency & Hourly Rate */}
+            {/* Site Notes & Photos */}
             <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-xl p-5 shadow-lg">
-              <h2 className="text-white font-semibold mb-4">Frequency & Hourly Rate</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <h2 className="text-white font-semibold mb-4">Site Notes & Photos</h2>
+              <div className="space-y-6">
+                {/* Site Notes */}
                 <div>
-                  <label className="block text-[13px] text-[#E6E8EB]/80 mb-1">Cleaning Frequency</label>
-                  <select
-                    value={frequencyRate.frequency}
-                    onChange={(e) => setFrequencyRate({ ...frequencyRate, frequency: Number(e.target.value) })}
-                    className="w-full bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all"
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7].map((freq) => (
-                      <option key={freq} value={freq}>{freq}x per week</option>
-                    ))}
-                  </select>
-                  {MONTHLY_MINIMUMS[frequencyRate.frequency] && (
-                    <p className="text-xs text-[#7A7F87] mt-1">
-                      Minimum: ${MONTHLY_MINIMUMS[frequencyRate.frequency]}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-[13px] text-[#E6E8EB]/80 mb-1">Hourly Rate</label>
-                  <input
-                    type="number"
-                    list="hourly-rates"
-                    value={frequencyRate.hourlyRate || ''}
-                    onChange={(e) => setFrequencyRate({ ...frequencyRate, hourlyRate: Number(e.target.value) })}
-                    className="w-full bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all"
-                    min="15"
-                    max="100"
-                    step="0.5"
+                  <label className="block text-[13px] text-[#E6E8EB]/80 mb-1">
+                    Site-Specific Notes
+                  </label>
+                  <p className="text-xs text-[#7A7F87] mb-2">
+                    (observations, special requirements, access issues)
+                  </p>
+                  <textarea
+                    value={siteNotes}
+                    onChange={(e) => setSiteNotes(e.target.value)}
+                    rows={4}
+                    placeholder="e.g., Loading dock access required, contact facility manager at ext. 123, special floor coatings in main lobby..."
+                    className="w-full bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all placeholder-[#7A7F87] resize-y"
                   />
-                  <datalist id="hourly-rates">
-                    {HOURLY_RATE_PRESETS.map((rate) => (
-                      <option key={rate} value={rate} />
-                    ))}
-                  </datalist>
-                  <p className="text-xs text-[#7A7F87] mt-1">Recommended: $20-$50/hr</p>
+                  <p className="text-xs text-[#7A7F87] mt-1">
+                    {siteNotes.length} characters
+                  </p>
+                </div>
+
+                {/* Photo Upload */}
+                <div>
+                  <label className="block text-[13px] text-[#E6E8EB]/80 mb-1">
+                    Site Photos
+                  </label>
+                  <p className="text-xs text-[#7A7F87] mb-2">
+                    (max 10 images)
+                  </p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handlePhotoUpload}
+                    disabled={sitePhotos.length >= 10}
+                    className="hidden"
+                    id="photo-upload"
+                  />
+                  <label
+                    htmlFor="photo-upload"
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                      sitePhotos.length >= 10
+                        ? 'bg-[#111317] border border-[#2C3038]/40 text-[#7A7F87] cursor-not-allowed opacity-50'
+                        : 'bg-[#0A5CFF] text-white hover:bg-[#0951E6] shadow-sm'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Upload Photos {sitePhotos.length > 0 && `(${sitePhotos.length}/10)`}
+                  </label>
+
+                  {/* Photo Thumbnail Grid */}
+                  {sitePhotos.length > 0 && (
+                    <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {sitePhotos.map((photo) => (
+                        <div
+                          key={photo.id}
+                          className="relative group aspect-square rounded-md overflow-hidden border border-[#2C3038]/40 bg-[#111317]"
+                        >
+                          <img
+                            src={photo.data}
+                            alt={photo.name}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            onClick={() => removePhoto(photo.id)}
+                            className="absolute top-2 right-2 p-1.5 bg-[#F31260] text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#F31260]/80 shadow-lg"
+                            title="Remove photo"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                            <p className="text-xs text-white truncate">{photo.name}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </section>
@@ -1131,6 +1324,10 @@ export default function CalculatorPage() {
                           sutmBathrooms: calculations.sutmBathroomsCalc,
                           frequencyRate,
                           specialServices,
+                          preferredCleaningDays,
+                          preferredCleaningTime,
+                          siteNotes,
+                          sitePhotos,
                           calculations: {
                             totalSqFt: calculations.totalSqFt,
                             totalHours: calculations.totalHours,

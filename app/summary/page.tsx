@@ -55,6 +55,13 @@ interface FrequencyRate {
   hourlyRate: number;
 }
 
+interface Photo {
+  id: string;
+  data: string; // base64
+  name: string;
+  timestamp: number;
+}
+
 interface QuoteData {
   quoteId: string;
   dateCreated: string;
@@ -64,6 +71,10 @@ interface QuoteData {
   sutmBathrooms: SUTMBathroom[];
   specialServices: SpecialService[];
   frequencyRate: FrequencyRate;  // FIXED: Now expects frequencyRate object
+  preferredCleaningDays?: boolean[];
+  preferredCleaningTime?: string;
+  siteNotes?: string;
+  sitePhotos?: Photo[];
   calculations: {
     totalSqFt: number;
     totalHours: number;
@@ -86,6 +97,7 @@ interface QuoteData {
 
 export default function PreQuoteSummary() {
   const router = useRouter();
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
 
   // Mock data - In production, this would come from route params or state
   const [quoteData, setQuoteData] = useState<QuoteData>({
@@ -460,6 +472,70 @@ export default function PreQuoteSummary() {
           </section>
         )}
 
+        {/* Site Documentation */}
+        {(quoteData.siteNotes || (quoteData.sitePhotos && quoteData.sitePhotos.length > 0)) && (
+          <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5 text-[#0A5CFF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Site Documentation
+            </h2>
+            <div className="space-y-6">
+              {/* Site Notes */}
+              {quoteData.siteNotes && (
+                <div>
+                  <h3 className="text-sm font-semibold text-[#E6E8EB]/80 mb-2">Site-Specific Notes</h3>
+                  <div className="bg-[#111317] border border-[#2C3038]/40 rounded-md p-4 text-white whitespace-pre-wrap">
+                    {quoteData.siteNotes}
+                  </div>
+                </div>
+              )}
+
+              {/* Site Photos */}
+              {quoteData.sitePhotos && quoteData.sitePhotos.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-[#E6E8EB]/80 mb-3">
+                    Site Photos ({quoteData.sitePhotos.length})
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {quoteData.sitePhotos.map((photo) => (
+                      <div
+                        key={photo.id}
+                        className="relative group cursor-pointer bg-[#111317] border border-[#2C3038]/40 rounded-lg overflow-hidden hover:border-[#0A5CFF] transition-colors"
+                        onClick={() => setSelectedPhoto(photo)}
+                      >
+                        <img
+                          src={photo.data}
+                          alt={photo.name}
+                          className="w-full h-48 object-cover"
+                        />
+                        <div className="p-3">
+                          <p className="text-sm text-white font-medium truncate">{photo.name}</p>
+                          <p className="text-xs text-[#7A7F87] mt-1">
+                            {new Date(photo.timestamp).toLocaleString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                          <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                          </svg>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Pricing Summary */}
         <section className="bg-gradient-to-br from-[#1C1F26] to-[#111317] border-2 border-[#0A5CFF]/30 rounded-xl p-6 mb-6">
           <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
@@ -560,6 +636,42 @@ export default function PreQuoteSummary() {
           </button>
         </div>
       </main>
+
+      {/* Photo Lightbox Modal */}
+      {selectedPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <button
+            onClick={() => setSelectedPhoto(null)}
+            className="absolute top-4 right-4 p-2 bg-[#1C1F26] border border-[#2C3038]/40 rounded-md text-white hover:bg-[#2C3038] transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <div className="max-w-5xl max-h-[90vh] relative" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={selectedPhoto.data}
+              alt={selectedPhoto.name}
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            />
+            <div className="mt-4 text-center">
+              <p className="text-white font-medium">{selectedPhoto.name}</p>
+              <p className="text-sm text-[#7A7F87] mt-1">
+                {new Date(selectedPhoto.timestamp).toLocaleString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit'
+                })}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-[#2C3038]/40 py-6 mt-12 print:hidden">
