@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import jsPDF from 'jspdf';
 
 // ============================================================================
 // TYPES (matching calculator)
@@ -48,6 +49,7 @@ interface SpecialService {
   name: string;
   price: number;
   checked: boolean;
+  billingType: 'monthly' | 'one-time';
 }
 
 interface FrequencyRate {
@@ -70,6 +72,7 @@ interface QuoteData {
   standardAreas: StandardArea[];
   sutmBathrooms: SUTMBathroom[];
   specialServices: SpecialService[];
+  initialClean?: { checked: boolean; price: number };
   frequencyRate: FrequencyRate;  // FIXED: Now expects frequencyRate object
   preferredCleaningDays?: boolean[];
   preferredCleaningTime?: string;
@@ -81,7 +84,9 @@ interface QuoteData {
     costPerClean: number;
     standardTotal: number;
     sutmTotal: number;
-    specialServicesTotal: number;
+    specialServicesMonthlyTotal?: number;
+    initialCleanTotal?: number;
+    specialServicesTotal?: number; // Legacy support
     subtotal: number;
     minimumRequired: number;
     minimumApplied: boolean;
@@ -98,6 +103,7 @@ interface QuoteData {
 export default function PreQuoteSummary() {
   const router = useRouter();
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   // Mock data - In production, this would come from route params or state
   const [quoteData, setQuoteData] = useState<QuoteData>({
@@ -156,8 +162,8 @@ export default function PreQuoteSummary() {
       },
     ],
     specialServices: [
-      { id: '1', name: 'Window Cleaning', price: 150, checked: true },
-      { id: '2', name: 'Carpet Cleaning', price: 75, checked: false },
+      { id: '1', name: 'Window Cleaning', price: 150, checked: true, billingType: 'monthly' as const },
+      { id: '2', name: 'Carpet Cleaning', price: 75, checked: false, billingType: 'monthly' as const },
     ],
     frequencyRate: {  // FIXED: Now stores as object
       frequency: 3,
@@ -193,6 +199,35 @@ export default function PreQuoteSummary() {
     }
   }, []);
 
+  // Helper function to calculate special services totals
+  const getSpecialServicesTotal = () => {
+    if (quoteData.calculations.specialServicesMonthlyTotal !== undefined) {
+      return quoteData.calculations.specialServicesMonthlyTotal || 0;
+    }
+    // Legacy support
+    if (quoteData.calculations.specialServicesTotal !== undefined) {
+      return quoteData.calculations.specialServicesTotal || 0;
+    }
+    // Fallback: calculate from specialServices array
+    if (quoteData.specialServices && Array.isArray(quoteData.specialServices)) {
+      return quoteData.specialServices
+        .filter(s => s.checked && s.billingType === 'monthly')
+        .reduce((sum, s) => sum + (s.price || 0), 0);
+    }
+    return 0;
+  };
+
+  // Helper function to get initial clean total
+  const getInitialCleanTotal = () => {
+    if (quoteData.calculations.initialCleanTotal !== undefined) {
+      return quoteData.calculations.initialCleanTotal || 0;
+    }
+    if (quoteData.initialClean && quoteData.initialClean.checked) {
+      return quoteData.initialClean.price || 0;
+    }
+    return 0;
+  };
+
   const handleBack = () => {
     router.push('/calculator');
   };
@@ -209,6 +244,633 @@ export default function PreQuoteSummary() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadPDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      const contentWidth = pageWidth - (margin * 2);
+      let yPosition = margin;
+
+      // Helper function to add a new page if needed
+      const checkNewPage = (requiredHeight: number) => {
+        if (yPosition + requiredHeight > pageHeight - margin) {
+          pdf.addPage();
+          yPosition = margin;
+          return true;
+        }
+        return false;
+      };
+
+      // Helper function to add simple section header (clean, minimal)
+      const addSectionHeader = (text: string) => {
+        checkNewPage(20);
+        yPosition += 10; // Spacing above section
+        
+        // Simple blue header text
+        pdf.setFontSize(14);
+        pdf.setFont(undefined, 'bold');
+        pdf.setTextColor(10, 92, 255); // Blue
+        pdf.text(text, margin, yPosition);
+        
+        // Simple divider line
+        pdf.setDrawColor(220, 220, 220); // Light gray
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, yPosition + 2, margin + contentWidth, yPosition + 2);
+        
+        yPosition += 8; // Spacing below header
+        pdf.setTextColor(0, 0, 0); // Reset to black
+      };
+
+      // Header with IronQuote branding (keep blue header)
+      pdf.setFillColor(10, 92, 255);
+      pdf.rect(0, 0, pageWidth, 30, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(24);
+      pdf.setFont(undefined, 'bold');
+      pdf.text('IronQuote', margin, 20);
+      pdf.setFontSize(10);
+      pdf.setFont(undefined, 'normal');
+      pdf.text('Commercial Cleaning Quote Summary', margin + 50, 20);
+      yPosition = 40;
+
+      // Quote ID and Date
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFontSize(11);
+      pdf.setFont(undefined, 'normal');
+      pdf.text(`Quote ID: ${quoteData.quoteId}`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`Date Created: ${quoteData.dateCreated}`, margin, yPosition);
+      yPosition += 12;
+
+      // Customer Information
+      addSectionHeader('Customer Information');
+      
+      pdf.setFontSize(10);
+      pdf.setFont(undefined, 'normal');
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(`Contact: ${quoteData.customerInfo.firstName} ${quoteData.customerInfo.lastName}`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`Business: ${quoteData.customerInfo.businessName}`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`Address: ${quoteData.customerInfo.address}`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`${quoteData.customerInfo.city}, ${quoteData.customerInfo.state} ${quoteData.customerInfo.zip}`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`Email: ${quoteData.customerInfo.email}`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`Phone: ${quoteData.customerInfo.phone}`, margin, yPosition);
+      yPosition += 12;
+
+      // Property Overview
+      addSectionHeader('Property Overview');
+      
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(`Total Sq Ft: ${quoteData.calculations.totalSqFt.toLocaleString()}`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`Frequency: ${quoteData.frequencyRate.frequency}x/week`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`Labor Rate: $${quoteData.frequencyRate.hourlyRate}/hr`, margin, yPosition);
+      yPosition += 6;
+      pdf.text(`Hours per Clean: ${quoteData.calculations.totalHours.toFixed(2)}`, margin, yPosition);
+      yPosition += 6;
+      if (quoteData.buildingType) {
+        pdf.text(`Building Type: ${quoteData.buildingType}`, margin, yPosition);
+        yPosition += 6;
+      }
+      yPosition += 12;
+
+      // Schedule & Access
+      if (quoteData.preferredCleaningDays || quoteData.preferredCleaningTime) {
+        addSectionHeader('Schedule & Access');
+        
+        pdf.setFontSize(10);
+        pdf.setTextColor(0, 0, 0);
+        
+        if (quoteData.preferredCleaningDays && quoteData.preferredCleaningDays.length === 7) {
+          const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+          const selectedDays = quoteData.preferredCleaningDays
+            .map((selected, index) => selected ? dayNames[index] : null)
+            .filter(day => day !== null);
+          
+          if (selectedDays.length > 0) {
+            pdf.text(`Preferred Cleaning Days: ${selectedDays.join(', ')}`, margin, yPosition);
+            yPosition += 6;
+          }
+        }
+        
+        if (quoteData.preferredCleaningTime) {
+          pdf.text(`Preferred Cleaning Time: ${quoteData.preferredCleaningTime}`, margin, yPosition);
+          yPosition += 6;
+        }
+        
+        yPosition += 12;
+      }
+
+      // Standard Areas Table - Clean minimal styling
+      if (quoteData.standardAreas.length > 0) {
+        addSectionHeader('Standard Areas');
+
+        // Wider, more balanced column widths (scaled to fit 180mm content width)
+        const colWidths = [34, 22, 22, 22, 24, 22, 30];
+        const headers = ['Area', 'Sq Ft', 'Floor', 'Soil', 'Run Rate', 'Hours', 'Monthly'];
+        const rowHeight = 8; // Increased from 7mm for better readability
+        const cellPadding = 8; // Increased from 5mm for better spacing
+
+        // Table header - minimal styling
+        checkNewPage(rowHeight + 5);
+        const headerY = yPosition;
+        pdf.setFillColor(245, 245, 245); // Light gray background for headers
+        pdf.rect(margin, headerY, contentWidth, rowHeight, 'F');
+        pdf.setDrawColor(220, 220, 220); // Light gray border
+        pdf.setLineWidth(0.3);
+        pdf.rect(margin, headerY, contentWidth, rowHeight, 'S');
+        
+        pdf.setFontSize(9);
+        pdf.setFont(undefined, 'bold');
+        pdf.setTextColor(0, 0, 0);
+        
+        let xPos = margin + cellPadding;
+        headers.forEach((header, i) => {
+          // Center-align headers
+          const textX = xPos + colWidths[i] / 2;
+          pdf.text(header, textX, headerY + 5, { align: 'center' });
+          xPos += colWidths[i];
+        });
+        yPosition += rowHeight + 3; // More spacing after header
+
+        // Table rows - clean with subtle alternating backgrounds
+        pdf.setFont(undefined, 'normal');
+        pdf.setFontSize(9);
+        quoteData.standardAreas.forEach((area, idx) => {
+          checkNewPage(rowHeight + 3);
+          
+          const rowY = yPosition;
+          
+          // Subtle alternating row background
+          if (idx % 2 === 0) {
+            pdf.setFillColor(250, 250, 250);
+          } else {
+            pdf.setFillColor(255, 255, 255);
+          }
+          pdf.rect(margin, rowY, contentWidth, rowHeight, 'F');
+          
+          // Simple border
+          pdf.setDrawColor(220, 220, 220);
+          pdf.setLineWidth(0.3);
+          pdf.rect(margin, rowY, contentWidth, rowHeight, 'S');
+          
+          // Vertical lines between columns
+          xPos = margin;
+          for (let i = 0; i < colWidths.length; i++) {
+            xPos += colWidths[i];
+            if (i < colWidths.length - 1) {
+              pdf.setDrawColor(220, 220, 220);
+              pdf.line(xPos, rowY, xPos, rowY + rowHeight);
+            }
+          }
+          
+          pdf.setTextColor(0, 0, 0);
+          xPos = margin + cellPadding;
+          
+          // Area name - left aligned
+          pdf.text(area.areaName.substring(0, 25), xPos, rowY + 5);
+          xPos += colWidths[0];
+          // Sq Ft - right aligned
+          pdf.text(area.totalSqFt.toString(), xPos + colWidths[1] - cellPadding, rowY + 5, { align: 'right' });
+          xPos += colWidths[1];
+          // Floor type - left aligned
+          pdf.text(area.floorType.substring(0, 10), xPos, rowY + 5);
+          xPos += colWidths[2];
+          // Soil level - left aligned
+          pdf.text(area.soilLevel.substring(0, 10), xPos, rowY + 5);
+          xPos += colWidths[3];
+          // Run Rate - right aligned
+          pdf.text(area.runRate.toString(), xPos + colWidths[4] - cellPadding, rowY + 5, { align: 'right' });
+          xPos += colWidths[4];
+          // Hours - right aligned
+          pdf.text(area.hours.toFixed(2), xPos + colWidths[5] - cellPadding, rowY + 5, { align: 'right' });
+          xPos += colWidths[5];
+          // Monthly - right aligned
+          pdf.text(`$${area.monthlyCost.toFixed(2)}`, xPos + colWidths[6] - cellPadding, rowY + 5, { align: 'right' });
+          
+          yPosition += rowHeight + 1; // Add spacing between rows
+        });
+
+        // Subtotal row - with spacing above
+        yPosition += 3; // Add gap above subtotal row
+        checkNewPage(rowHeight + 5);
+        const subtotalY = yPosition;
+        pdf.setFont(undefined, 'bold');
+        pdf.setFillColor(255, 255, 255);
+        pdf.setDrawColor(220, 220, 220);
+        pdf.setLineWidth(0.3);
+        pdf.rect(margin, subtotalY, contentWidth, rowHeight, 'S');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text('Subtotal:', margin + cellPadding, subtotalY + 5);
+        pdf.text(`$${quoteData.calculations.standardTotal.toFixed(2)}`, margin + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6] - cellPadding, subtotalY + 5, { align: 'right' });
+        yPosition += rowHeight + 5;
+      }
+
+      // SUTM Bathrooms Table - Clean minimal styling
+      if (quoteData.sutmBathrooms.length > 0) {
+        addSectionHeader('SUTM Areas (Bathrooms)');
+
+        // Wider, more balanced column widths (scaled to fit 180mm content width)
+        const colWidths = [30, 20, 20, 20, 22, 20, 20, 26];
+        const headers = ['Bathroom', 'Sq Ft', 'Floor', 'Soil', 'Run Rate', 'Fixtures', 'Hours', 'Monthly'];
+        const rowHeight = 8; // Increased from 7mm for better readability
+        const cellPadding = 8; // Increased from 5mm for better spacing
+
+        // Table header
+        checkNewPage(rowHeight + 5);
+        const headerY = yPosition;
+        pdf.setFillColor(245, 245, 245); // Light gray background for headers
+        pdf.rect(margin, headerY, contentWidth, rowHeight, 'F');
+        pdf.setDrawColor(220, 220, 220);
+        pdf.setLineWidth(0.3);
+        pdf.rect(margin, headerY, contentWidth, rowHeight, 'S');
+        
+        pdf.setFontSize(9);
+        pdf.setFont(undefined, 'bold');
+        pdf.setTextColor(0, 0, 0);
+        
+        let xPos = margin + cellPadding;
+        headers.forEach((header, i) => {
+          // Center-align headers
+          const textX = xPos + colWidths[i] / 2;
+          pdf.text(header, textX, headerY + 5, { align: 'center' });
+          xPos += colWidths[i];
+        });
+        yPosition += rowHeight + 3; // More spacing after header
+
+        // Table rows
+        pdf.setFont(undefined, 'normal');
+        pdf.setFontSize(9);
+        quoteData.sutmBathrooms.forEach((bathroom, idx) => {
+          checkNewPage(rowHeight + 3);
+          
+          const rowY = yPosition;
+          
+          if (idx % 2 === 0) {
+            pdf.setFillColor(250, 250, 250);
+          } else {
+            pdf.setFillColor(255, 255, 255);
+          }
+          pdf.rect(margin, rowY, contentWidth, rowHeight, 'F');
+          
+          pdf.setDrawColor(220, 220, 220);
+          pdf.setLineWidth(0.3);
+          pdf.rect(margin, rowY, contentWidth, rowHeight, 'S');
+          
+          // Vertical lines
+          xPos = margin;
+          for (let i = 0; i < colWidths.length; i++) {
+            xPos += colWidths[i];
+            if (i < colWidths.length - 1) {
+              pdf.setDrawColor(220, 220, 220);
+              pdf.line(xPos, rowY, xPos, rowY + rowHeight);
+            }
+          }
+          
+          pdf.setTextColor(0, 0, 0);
+          xPos = margin + cellPadding;
+          
+          // Bathroom name - left aligned
+          pdf.text(bathroom.bathroomName.substring(0, 20), xPos, rowY + 5);
+          xPos += colWidths[0];
+          // Sq Ft - right aligned
+          pdf.text(bathroom.totalSqFt.toString(), xPos + colWidths[1] - cellPadding, rowY + 5, { align: 'right' });
+          xPos += colWidths[1];
+          // Floor type - left aligned
+          pdf.text(bathroom.floorType.substring(0, 8), xPos, rowY + 5);
+          xPos += colWidths[2];
+          // Soil level - left aligned
+          pdf.text(bathroom.soilLevel.substring(0, 8), xPos, rowY + 5);
+          xPos += colWidths[3];
+          // Run Rate - right aligned
+          pdf.text(bathroom.runRate.toString(), xPos + colWidths[4] - cellPadding, rowY + 5, { align: 'right' });
+          xPos += colWidths[4];
+          // Fixtures - right aligned
+          pdf.text(bathroom.fixtureCount.toString(), xPos + colWidths[5] - cellPadding, rowY + 5, { align: 'right' });
+          xPos += colWidths[5];
+          // Hours - right aligned
+          pdf.text(bathroom.totalHours.toFixed(2), xPos + colWidths[6] - cellPadding, rowY + 5, { align: 'right' });
+          xPos += colWidths[6];
+          // Monthly - right aligned
+          pdf.text(`$${bathroom.monthlyCost.toFixed(2)}`, xPos + colWidths[7] - cellPadding, rowY + 5, { align: 'right' });
+          
+          yPosition += rowHeight + 1; // Add spacing between rows
+        });
+
+        // Subtotal row - with spacing above
+        yPosition += 3; // Add gap above subtotal row
+        checkNewPage(rowHeight + 5);
+        const subtotalY = yPosition;
+        pdf.setFont(undefined, 'bold');
+        pdf.setFillColor(255, 255, 255);
+        pdf.setDrawColor(220, 220, 220);
+        pdf.setLineWidth(0.3);
+        pdf.rect(margin, subtotalY, contentWidth, rowHeight, 'S');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text('Subtotal:', margin + cellPadding, subtotalY + 5);
+        pdf.text(`$${quoteData.calculations.sutmTotal.toFixed(2)}`, margin + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6] + colWidths[7] - cellPadding, subtotalY + 5, { align: 'right' });
+        yPosition += rowHeight + 5;
+      }
+
+      // Special Services - Simple list
+      const activeServices = (quoteData.specialServices || []).filter(s => s && s.checked);
+      const specialServicesMonthlyTotalCalc = getSpecialServicesTotal();
+      const initialCleanTotalCalc = getInitialCleanTotal();
+      
+      if (activeServices.length > 0 || initialCleanTotalCalc > 0) {
+        addSectionHeader('Special Services');
+
+        pdf.setFontSize(10);
+        pdf.setTextColor(0, 0, 0);
+        
+        // Initial Clean (one-time)
+        if (initialCleanTotalCalc > 0) {
+          checkNewPage(7);
+          pdf.text(`Initial Clean: $${initialCleanTotalCalc.toFixed(2)} (one-time)`, margin, yPosition);
+          yPosition += 6;
+        }
+        
+        // Monthly services
+        activeServices.forEach((service) => {
+          if (service.billingType === 'monthly') {
+            checkNewPage(7);
+            pdf.text(`${service.name}: $${(service.price || 0).toFixed(2)}/mo`, margin, yPosition);
+            yPosition += 6;
+          } else if (service.billingType === 'one-time') {
+            checkNewPage(7);
+            pdf.text(`${service.name}: $${(service.price || 0).toFixed(2)} (one-time)`, margin, yPosition);
+            yPosition += 6;
+          }
+        });
+
+        if (specialServicesMonthlyTotalCalc > 0) {
+          checkNewPage(7);
+          pdf.setFont(undefined, 'bold');
+          pdf.text('Monthly Services Subtotal:', margin, yPosition);
+          pdf.text(`$${specialServicesMonthlyTotalCalc.toFixed(2)}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+          yPosition += 8;
+        }
+      }
+
+      // Site Documentation
+      if (quoteData.siteNotes || (quoteData.sitePhotos && quoteData.sitePhotos.length > 0)) {
+        addSectionHeader('Site Documentation');
+
+        // Site Notes
+        if (quoteData.siteNotes) {
+          pdf.setFontSize(10);
+          pdf.setFont(undefined, 'normal');
+          pdf.setTextColor(0, 0, 0);
+          pdf.text('Site Notes:', margin, yPosition);
+          yPosition += 6;
+          
+          pdf.setFontSize(9);
+          const notesLines = pdf.splitTextToSize(quoteData.siteNotes, contentWidth);
+          notesLines.forEach((line: string) => {
+            checkNewPage(5);
+            pdf.text(line, margin, yPosition);
+            yPosition += 5;
+          });
+          yPosition += 8;
+        }
+
+        // Site Photos in 2-column grid
+        if (quoteData.sitePhotos && quoteData.sitePhotos.length > 0) {
+          pdf.setFontSize(10);
+          pdf.setFont(undefined, 'normal');
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(`Photos:`, margin, yPosition);
+          yPosition += 8;
+
+          const photoWidth = (contentWidth - 5) / 2;
+          const photoHeight = 50;
+          let currentCol = 0;
+          let photoStartY = yPosition;
+
+          for (let i = 0; i < quoteData.sitePhotos.length; i++) {
+            const photo = quoteData.sitePhotos[i];
+            
+            if (currentCol === 0) {
+              checkNewPage(photoHeight + 20);
+              photoStartY = yPosition;
+            }
+
+            const photoX = currentCol === 0 ? margin : margin + photoWidth + 5;
+            
+            try {
+              const img = new Image();
+              img.src = photo.data;
+              
+              await new Promise((resolve) => {
+                img.onload = () => {
+                  const imgWidth = img.width;
+                  const imgHeight = img.height;
+                  let width = photoWidth;
+                  let height = (imgHeight * photoWidth) / imgWidth;
+                  
+                  if (height > photoHeight) {
+                    width = (imgWidth * photoHeight) / imgHeight;
+                    height = photoHeight;
+                  }
+
+                  const xOffset = (photoWidth - width) / 2;
+                  const yOffset = (photoHeight - height) / 2;
+
+                  // Simple border
+                  pdf.setDrawColor(220, 220, 220);
+                  pdf.setLineWidth(0.3);
+                  pdf.rect(photoX, photoStartY, photoWidth, photoHeight, 'S');
+                  
+                  pdf.addImage(photo.data, 'JPEG', photoX + xOffset, photoStartY + yOffset, width, height);
+                  
+                  // Caption
+                  pdf.setFontSize(7);
+                  pdf.setTextColor(100, 100, 100);
+                  const captionY = photoStartY + photoHeight + 4;
+                  const captionText = photo.name.length > 40 ? photo.name.substring(0, 37) + '...' : photo.name;
+                  pdf.text(captionText, photoX + photoWidth / 2, captionY, { align: 'center' });
+                  
+                  resolve(null);
+                };
+                img.onerror = () => {
+                  pdf.setFontSize(8);
+                  pdf.setTextColor(100, 100, 100);
+                  pdf.text(`Photo: ${photo.name} (unable to load)`, photoX, photoStartY);
+                  resolve(null);
+                };
+              });
+            } catch (error) {
+              pdf.setFontSize(8);
+              pdf.setTextColor(100, 100, 100);
+              pdf.text(`Photo: ${photo.name} (error loading)`, photoX, photoStartY);
+            }
+
+            currentCol++;
+            if (currentCol >= 2) {
+              currentCol = 0;
+              yPosition = photoStartY + photoHeight + 12;
+            }
+          }
+
+          if (currentCol > 0) {
+            yPosition = photoStartY + photoHeight + 12;
+          }
+          yPosition += 8;
+        }
+      }
+
+      // Pricing Summary - Clean simple format
+      addSectionHeader('Pricing Summary');
+      yPosition += 5;
+
+      pdf.setFontSize(10);
+      pdf.setFont(undefined, 'normal');
+      pdf.setTextColor(0, 0, 0);
+
+      // Simple pricing rows
+      checkNewPage(8);
+      pdf.text('Standard Areas', margin, yPosition);
+      pdf.text(`$${quoteData.calculations.standardTotal.toFixed(2)}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+      yPosition += 7;
+
+      checkNewPage(8);
+      pdf.text('SUTM Bathrooms', margin, yPosition);
+      pdf.text(`$${quoteData.calculations.sutmTotal.toFixed(2)}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+      yPosition += 7;
+
+      const specialServicesMonthlyTotalPdf = getSpecialServicesTotal();
+      const initialCleanTotalPdf = getInitialCleanTotal();
+      
+      if (specialServicesMonthlyTotalPdf > 0) {
+        checkNewPage(8);
+        pdf.text('Special Services (Monthly)', margin, yPosition);
+        pdf.text(`$${specialServicesMonthlyTotalPdf.toFixed(2)}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+        yPosition += 7;
+      }
+      
+      if (initialCleanTotalPdf > 0) {
+        checkNewPage(8);
+        pdf.text('Initial Clean (One-Time)', margin, yPosition);
+        pdf.text(`$${initialCleanTotalPdf.toFixed(2)}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+        yPosition += 7;
+      }
+
+      // Divider line
+      checkNewPage(10);
+      pdf.setDrawColor(220, 220, 220);
+      pdf.setLineWidth(0.3);
+      pdf.line(margin, yPosition, margin + contentWidth, yPosition);
+      yPosition += 5;
+
+      // Subtotal
+      pdf.setFont(undefined, 'bold');
+      pdf.text('Subtotal', margin, yPosition);
+      pdf.text(`$${quoteData.calculations.subtotal.toFixed(2)}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+      yPosition += 7;
+
+      // Minimum Applied (if applicable)
+      if (quoteData.calculations.minimumApplied) {
+        checkNewPage(8);
+        pdf.setFont(undefined, 'normal');
+        pdf.text('Minimum Applied', margin, yPosition);
+        pdf.text(`+$${(quoteData.calculations.minimumRequired - quoteData.calculations.subtotal).toFixed(2)}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+        yPosition += 7;
+      }
+
+      // Surcharge (if applicable)
+      if (quoteData.calculations.surcharge > 0) {
+        checkNewPage(8);
+        pdf.setFont(undefined, 'normal');
+        pdf.text('Surcharge (20%)', margin, yPosition);
+        pdf.text(`+$${quoteData.calculations.surcharge.toFixed(2)}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+        yPosition += 7;
+      }
+
+      // Monthly Total - Simple bold display
+      checkNewPage(12);
+      pdf.setDrawColor(220, 220, 220);
+      pdf.setLineWidth(0.3);
+      pdf.line(margin, yPosition, margin + contentWidth, yPosition);
+      yPosition += 7;
+      
+      pdf.setFontSize(12);
+      pdf.setFont(undefined, 'bold');
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Monthly Total', margin, yPosition);
+      pdf.setFontSize(14);
+      pdf.text(`$${quoteData.calculations.finalTotalWithSurcharge.toLocaleString(undefined, { maximumFractionDigits: 2 })}`, margin + contentWidth - 5, yPosition, { align: 'right' });
+      yPosition += 5;
+
+      // Generate filename
+      const customerName = quoteData.customerInfo.businessName || `${quoteData.customerInfo.firstName}_${quoteData.customerInfo.lastName}`;
+      const sanitizedName = customerName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `IronQuote-${sanitizedName}-${dateStr}.pdf`;
+
+      // Save PDF
+      pdf.save(filename);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleEmailSummary = () => {
+    const customerName = quoteData.customerInfo.businessName || `${quoteData.customerInfo.firstName} ${quoteData.customerInfo.lastName}`;
+    const subject = encodeURIComponent(`IronQuote - ${customerName} - Operations Summary`);
+    
+    const bodyLines = [
+      `IronQuote Operations Summary`,
+      ``,
+      `Quote ID: ${quoteData.quoteId}`,
+      `Date Created: ${quoteData.dateCreated}`,
+      ``,
+      `CUSTOMER INFORMATION:`,
+      `Contact: ${quoteData.customerInfo.firstName} ${quoteData.customerInfo.lastName}`,
+      `Business: ${quoteData.customerInfo.businessName}`,
+      `Address: ${quoteData.customerInfo.address}`,
+      `${quoteData.customerInfo.city}, ${quoteData.customerInfo.state} ${quoteData.customerInfo.zip}`,
+      `Email: ${quoteData.customerInfo.email}`,
+      `Phone: ${quoteData.customerInfo.phone}`,
+      ``,
+      `PROPERTY OVERVIEW:`,
+      `Total Sq Ft: ${quoteData.calculations.totalSqFt.toLocaleString()}`,
+      `Frequency: ${quoteData.frequencyRate.frequency}x/week`,
+      `Labor Rate: $${quoteData.frequencyRate.hourlyRate}/hr`,
+      `Hours per Clean: ${quoteData.calculations.totalHours.toFixed(2)}`,
+      quoteData.buildingType ? `Building Type: ${quoteData.buildingType}` : '',
+      ``,
+      `PRICING SUMMARY:`,
+      `Standard Areas: $${quoteData.calculations.standardTotal.toFixed(2)}`,
+      `SUTM Bathrooms: $${quoteData.calculations.sutmTotal.toFixed(2)}`,
+      getSpecialServicesTotal() > 0 ? `Special Services (Monthly): $${getSpecialServicesTotal().toFixed(2)}` : '',
+      getInitialCleanTotal() > 0 ? `Initial Clean (One-Time): $${getInitialCleanTotal().toFixed(2)}` : '',
+      `Subtotal: $${quoteData.calculations.subtotal.toFixed(2)}`,
+      quoteData.calculations.minimumApplied ? `Minimum Applied: +$${(quoteData.calculations.minimumRequired - quoteData.calculations.subtotal).toFixed(2)}` : '',
+      quoteData.calculations.surcharge > 0 ? `Surcharge (20%): +$${quoteData.calculations.surcharge.toFixed(2)}` : '',
+      ``,
+      `MONTHLY TOTAL: $${quoteData.calculations.finalTotalWithSurcharge.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+      ``,
+      `Please see attached PDF for complete details including room-by-room breakdown and site documentation.`
+    ].filter(line => line !== '');
+
+    const body = encodeURIComponent(bodyLines.join('\n'));
+    const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
+    
+    window.location.href = mailtoLink;
   };
 
   return (
@@ -449,7 +1111,7 @@ export default function PreQuoteSummary() {
         </section>
 
         {/* Special Services */}
-        {quoteData.specialServices.some(s => s.checked) && (
+        {((quoteData.specialServices && quoteData.specialServices.some(s => s && s.checked)) || getInitialCleanTotal() > 0) && (
           <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-[#0A5CFF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -458,16 +1120,28 @@ export default function PreQuoteSummary() {
               Special Services
             </h2>
             <div className="space-y-3">
-              {quoteData.specialServices.filter(s => s.checked).map((service) => (
+              {/* Initial Clean */}
+              {getInitialCleanTotal() > 0 && (
+                <div className="flex items-center justify-between py-2 border-b border-[#2C3038]/20">
+                  <div className="text-white font-medium">Initial Clean (Recommended)</div>
+                  <div className="text-white font-semibold">${getInitialCleanTotal().toFixed(2)} (one-time)</div>
+                </div>
+              )}
+              {/* Custom Services */}
+              {(quoteData.specialServices || []).filter(s => s && s.checked).map((service) => (
                 <div key={service.id} className="flex items-center justify-between py-2 border-b border-[#2C3038]/20">
                   <div className="text-white font-medium">{service.name}</div>
-                  <div className="text-white font-semibold">${service.price.toFixed(2)}/mo</div>
+                  <div className="text-white font-semibold">
+                    ${(service.price || 0).toFixed(2)}/{service.billingType === 'one-time' ? 'one-time' : 'mo'}
+                  </div>
                 </div>
               ))}
-              <div className="flex items-center justify-between pt-3 border-t border-[#2C3038]/40">
-                <div className="text-sm font-semibold text-[#7A7F87]">Subtotal:</div>
-                <div className="text-lg font-bold text-[#0A5CFF]">${quoteData.calculations.specialServicesTotal.toFixed(2)}</div>
-              </div>
+              {getSpecialServicesTotal() > 0 && (
+                <div className="flex items-center justify-between pt-3 border-t border-[#2C3038]/40">
+                  <div className="text-sm font-semibold text-[#7A7F87]">Monthly Services Subtotal:</div>
+                  <div className="text-lg font-bold text-[#0A5CFF]">${getSpecialServicesTotal().toFixed(2)}</div>
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -554,10 +1228,16 @@ export default function PreQuoteSummary() {
               <span className="text-[#E6E8EB]">SUTM Bathrooms</span>
               <span className="text-white font-semibold">${quoteData.calculations.sutmTotal.toFixed(2)}</span>
             </div>
-            {quoteData.calculations.specialServicesTotal > 0 && (
+            {getSpecialServicesTotal() > 0 && (
               <div className="flex justify-between text-lg">
-                <span className="text-[#E6E8EB]">Special Services</span>
-                <span className="text-white font-semibold">${quoteData.calculations.specialServicesTotal.toFixed(2)}</span>
+                <span className="text-[#E6E8EB]">Special Services (Monthly)</span>
+                <span className="text-white font-semibold">${getSpecialServicesTotal().toFixed(2)}</span>
+              </div>
+            )}
+            {getInitialCleanTotal() > 0 && (
+              <div className="flex justify-between text-lg">
+                <span className="text-[#E6E8EB]">Initial Clean (One-Time)</span>
+                <span className="text-white font-semibold">${getInitialCleanTotal().toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg pt-3 border-t border-[#2C3038]/40">
@@ -604,7 +1284,7 @@ export default function PreQuoteSummary() {
         </section>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 print:hidden">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 print:hidden mb-4">
           <button
             onClick={handleBack}
             className="flex items-center justify-center gap-2 px-6 py-4 bg-[#111317] border border-[#2C3038]/40 text-white rounded-lg text-base font-semibold hover:border-[#0A5CFF] transition-colors"
@@ -633,6 +1313,42 @@ export default function PreQuoteSummary() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
+          </button>
+        </div>
+
+        {/* PDF Export and Email Buttons */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:hidden">
+          <button
+            onClick={handleDownloadPDF}
+            disabled={isGeneratingPDF}
+            className="flex items-center justify-center gap-2 px-6 py-4 bg-[#111317] border border-[#2C3038]/40 text-white rounded-lg text-base font-semibold hover:border-[#0A5CFF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGeneratingPDF ? (
+              <>
+                <svg className="animate-spin h-5 w-5 text-[#0A5CFF]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Generating PDF...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download PDF
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleEmailSummary}
+            className="flex items-center justify-center gap-2 px-6 py-4 bg-[#111317] border border-[#2C3038]/40 text-white rounded-lg text-base font-semibold hover:border-[#0A5CFF] transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            Email Summary
           </button>
         </div>
       </main>

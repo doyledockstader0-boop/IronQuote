@@ -61,6 +61,7 @@ interface SpecialService {
   name: string;
   price: number;
   checked: boolean;
+  billingType: 'monthly' | 'one-time';
 }
 
 // ============================================================================
@@ -178,11 +179,17 @@ export default function CalculatorPage() {
   const [siteNotes, setSiteNotes] = useState<string>('');
   const [sitePhotos, setSitePhotos] = useState<Photo[]>([]);
 
-  const [specialServices, setSpecialServices] = useState<SpecialService[]>([
-    { id: '1', name: 'Carpet Cleaning', price: 75, checked: false },
-    { id: '2', name: 'Window Cleaning', price: 150, checked: false },
-    { id: '3', name: 'Floor Stripping & Waxing', price: 200, checked: false },
-  ]);
+  const [initialClean, setInitialClean] = useState<{ checked: boolean; price: number }>({
+    checked: false,
+    price: 0,
+  });
+
+  const [specialServices, setSpecialServices] = useState<SpecialService[]>([]);
+
+  const [showAddServiceModal, setShowAddServiceModal] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServicePrice, setNewServicePrice] = useState(0);
+  const [newServiceBillingType, setNewServiceBillingType] = useState<'monthly' | 'one-time'>('monthly');
 
   // ============================================================================
   // LOAD SAVED QUOTE DATA ON MOUNT - THIS FIXES THE BACK BUTTON BUG
@@ -199,7 +206,10 @@ export default function CalculatorPage() {
         if (data.standardAreas) setStandardAreas(data.standardAreas);
         if (data.sutmBathrooms) setSutmBathrooms(data.sutmBathrooms);
         if (data.frequencyRate) setFrequencyRate(data.frequencyRate);
-        if (data.specialServices) setSpecialServices(data.specialServices);
+        if (data.initialClean) setInitialClean(data.initialClean);
+        if (data.specialServices && Array.isArray(data.specialServices)) {
+          setSpecialServices(data.specialServices);
+        }
         if (data.preferredCleaningDays) setPreferredCleaningDays(data.preferredCleaningDays);
         if (data.preferredCleaningTime) setPreferredCleaningTime(data.preferredCleaningTime);
         if (data.siteNotes) setSiteNotes(data.siteNotes);
@@ -208,6 +218,20 @@ export default function CalculatorPage() {
         console.log('✅ Loaded saved quote data from localStorage');
       } catch (error) {
         console.error('Failed to load saved quote:', error);
+      }
+    } else {
+      // Only load custom services if there's no saved quote
+      // (saved quote already contains all services)
+      const savedCustomServices = localStorage.getItem('ironquote-custom-services');
+      if (savedCustomServices) {
+        try {
+          const customServices = JSON.parse(savedCustomServices);
+          if (Array.isArray(customServices)) {
+            setSpecialServices(customServices);
+          }
+        } catch (error) {
+          console.error('Failed to load custom services:', error);
+        }
       }
     }
   }, []); // Empty dependency array = runs once on mount
@@ -257,13 +281,16 @@ export default function CalculatorPage() {
     const sutmHours = sutmBathroomsCalc.reduce((sum, bathroom) => sum + bathroom.totalHours, 0);
     const sutmSqFt = sutmBathroomsCalc.reduce((sum, bathroom) => sum + bathroom.sqFt, 0);
 
-    // Special services
-    const specialServicesTotal = specialServices
-      .filter((s) => s.checked)
+    // Special services (monthly only for subtotal)
+    const specialServicesMonthlyTotal = specialServices
+      .filter((s) => s.checked && s.billingType === 'monthly')
       .reduce((sum, s) => sum + s.price, 0);
 
-    // Subtotal
-    const subtotal = standardTotal + sutmTotal + specialServicesTotal;
+    // Initial clean (one-time, separate)
+    const initialCleanTotal = initialClean.checked ? initialClean.price : 0;
+
+    // Subtotal (monthly recurring only)
+    const subtotal = standardTotal + sutmTotal + specialServicesMonthlyTotal;
 
     // Apply minimum
     const minimumRequired = MONTHLY_MINIMUMS[frequency] || 0;
@@ -293,7 +320,8 @@ export default function CalculatorPage() {
       sutmTotal,
       sutmHours,
       sutmSqFt,
-      specialServicesTotal,
+      specialServicesMonthlyTotal,
+      initialCleanTotal,
       subtotal,
       minimumRequired,
       minimumApplied,
@@ -305,7 +333,19 @@ export default function CalculatorPage() {
       totalSqFt,
       costPerClean,
     };
-  }, [standardAreas, sutmBathrooms, frequencyRate, specialServices]);
+  }, [standardAreas, sutmBathrooms, frequencyRate, specialServices, initialClean]);
+
+  // Update initial clean price when monthly total changes (only if not already set)
+  useEffect(() => {
+    if (initialClean.price === 0 && calculations.finalTotalWithSurcharge > 0) {
+      setInitialClean((prev) => {
+        if (prev.price === 0) {
+          return { ...prev, price: calculations.finalTotalWithSurcharge };
+        }
+        return prev;
+      });
+    }
+  }, [calculations.finalTotalWithSurcharge, initialClean.price]);
 
   // ============================================================================
   // HANDLERS
@@ -411,6 +451,46 @@ export default function CalculatorPage() {
     setSpecialServices((prev) =>
       prev.map((service) => (service.id === id ? { ...service, price } : service))
     );
+  };
+
+  const addCustomService = () => {
+    if (!newServiceName.trim()) {
+      alert('Please enter a service name');
+      return;
+    }
+    if (newServicePrice <= 0) {
+      alert('Please enter a valid price');
+      return;
+    }
+    const newService: SpecialService = {
+      id: Date.now().toString(),
+      name: newServiceName.trim(),
+      price: newServicePrice,
+      checked: true,
+      billingType: newServiceBillingType,
+    };
+    setSpecialServices((prev) => [...prev, newService]);
+    setNewServiceName('');
+    setNewServicePrice(0);
+    setNewServiceBillingType('monthly');
+    setShowAddServiceModal(false);
+    
+    // Save to localStorage
+    const savedServices = localStorage.getItem('ironquote-custom-services');
+    const customServices = savedServices ? JSON.parse(savedServices) : [];
+    customServices.push(newService);
+    localStorage.setItem('ironquote-custom-services', JSON.stringify(customServices));
+  };
+
+  const removeCustomService = (id: string) => {
+    setSpecialServices((prev) => prev.filter((s) => s.id !== id));
+    
+    // Remove from localStorage
+    const savedServices = localStorage.getItem('ironquote-custom-services');
+    if (savedServices) {
+      const customServices = JSON.parse(savedServices).filter((s: SpecialService) => s.id !== id);
+      localStorage.setItem('ironquote-custom-services', JSON.stringify(customServices));
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -538,6 +618,7 @@ export default function CalculatorPage() {
                   standardAreas: calculations.standardAreasCalc,
                   sutmBathrooms: calculations.sutmBathroomsCalc,
                   frequencyRate,
+                  initialClean,
                   specialServices,
                   preferredCleaningDays,
                   preferredCleaningTime,
@@ -549,7 +630,8 @@ export default function CalculatorPage() {
                     costPerClean: calculations.costPerClean,
                     standardTotal: calculations.standardTotal,
                     sutmTotal: calculations.sutmTotal,
-                    specialServicesTotal: calculations.specialServicesTotal,
+                    specialServicesMonthlyTotal: calculations.specialServicesMonthlyTotal,
+                    initialCleanTotal: calculations.initialCleanTotal,
                     subtotal: calculations.subtotal,
                     finalTotal: calculations.finalTotal,
                     finalTotalWithSurcharge: calculations.finalTotalWithSurcharge,
@@ -1199,31 +1281,182 @@ export default function CalculatorPage() {
             <section className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-xl p-5 shadow-lg">
               <h2 className="text-white font-semibold mb-4">Special Services</h2>
               <div className="space-y-3">
-                {specialServices.map((service) => (
-                  <div key={service.id} className="flex items-center gap-4">
+                {/* Initial Clean - Always at top */}
+                <div className="pb-3 border-b border-[#2C3038]/40">
+                  <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
-                      checked={service.checked}
-                      onChange={() => toggleSpecialService(service.id)}
-                      className="h-4 w-4 rounded border-[#2C3038] text-[#0A5CFF] focus:ring-[#0A5CFF] bg-[#111317]"
+                      checked={initialClean.checked}
+                      onChange={(e) => setInitialClean((prev) => ({ ...prev, checked: e.target.checked }))}
+                      className="h-4 w-4 rounded border-[#2C3038] text-[#0A5CFF] focus:ring-[#0A5CFF] bg-[#111317] mt-1"
                     />
-                    <span className="flex-1 text-white">{service.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[#7A7F87]">$</span>
-                      <input
-                        type="number"
-                        value={service.price}
-                        onChange={(e) => updateSpecialServicePrice(service.id, Number(e.target.value))}
-                        className="w-24 bg-[#111317] text-white px-3 py-2 rounded border border-[#E6E8EB]/15 focus:border-[#0A5CFF] outline-none text-sm text-right"
-                        min="0"
-                        step="5"
-                      />
-                      <span className="text-[#7A7F87]">/mo</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-white font-medium">Initial Clean (Recommended)</span>
+                      </div>
+                      <p className="text-xs text-[#7A7F87] mb-2">Complete scope of work on first visit</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#7A7F87]">$</span>
+                        <input
+                          type="number"
+                          value={initialClean.price || ''}
+                          onChange={(e) => setInitialClean((prev) => ({ ...prev, price: Number(e.target.value) }))}
+                          className="w-24 bg-[#111317] text-white px-3 py-2 rounded border border-[#E6E8EB]/15 focus:border-[#0A5CFF] outline-none text-sm text-right"
+                          min="0"
+                          step="5"
+                        />
+                        <span className="text-[#7A7F87]">/one-time</span>
+                      </div>
                     </div>
                   </div>
-                ))}
+                </div>
+
+                {/* Other Special Services */}
+                <div className="space-y-3">
+                  {specialServices.map((service) => (
+                    <div key={service.id} className="flex items-center gap-4">
+                      <input
+                        type="checkbox"
+                        checked={service.checked}
+                        onChange={() => toggleSpecialService(service.id)}
+                        className="h-4 w-4 rounded border-[#2C3038] text-[#0A5CFF] focus:ring-[#0A5CFF] bg-[#111317]"
+                      />
+                      <span className="flex-1 text-white">{service.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#7A7F87]">$</span>
+                        <input
+                          type="number"
+                          value={service.price}
+                          onChange={(e) => updateSpecialServicePrice(service.id, Number(e.target.value))}
+                          className="w-24 bg-[#111317] text-white px-3 py-2 rounded border border-[#E6E8EB]/15 focus:border-[#0A5CFF] outline-none text-sm text-right"
+                          min="0"
+                          step="5"
+                        />
+                        <span className="text-[#7A7F87]">/{service.billingType === 'one-time' ? 'one-time' : 'mo'}</span>
+                      </div>
+                      <button
+                        onClick={() => removeCustomService(service.id)}
+                        className="text-[#F31260] hover:text-[#F31260]/80 text-sm font-bold px-2"
+                        title="Remove service"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add Custom Service Button */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowAddServiceModal(true)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#111317] border border-[#2C3038]/40 text-white rounded-md text-sm font-medium hover:border-[#0A5CFF] transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Special Service
+                  </button>
+                </div>
               </div>
             </section>
+
+            {/* Add Service Modal */}
+            {showAddServiceModal && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-[#1C1F26] border border-[#2C3038]/40 rounded-xl p-6 max-w-md w-full shadow-xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-white font-semibold text-lg">Add Special Service</h3>
+                    <button
+                      onClick={() => {
+                        setShowAddServiceModal(false);
+                        setNewServiceName('');
+                        setNewServicePrice(0);
+                        setNewServiceBillingType('monthly');
+                      }}
+                      className="text-[#7A7F87] hover:text-white transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-[#E6E8EB]/80 mb-1">Service Name</label>
+                      <input
+                        type="text"
+                        value={newServiceName}
+                        onChange={(e) => setNewServiceName(e.target.value)}
+                        placeholder="e.g., Deep Cleaning"
+                        className="w-full bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all placeholder-[#7A7F87]"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[#E6E8EB]/80 mb-1">Price</label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#7A7F87]">$</span>
+                        <input
+                          type="number"
+                          value={newServicePrice || ''}
+                          onChange={(e) => setNewServicePrice(Number(e.target.value))}
+                          placeholder="0"
+                          className="flex-1 bg-[#111317] text-white px-3 py-2 rounded-md border border-[#E6E8EB]/15 focus:border-[#0A5CFF] focus:ring-1 focus:ring-[#0A5CFF] outline-none transition-all"
+                          min="0"
+                          step="5"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[#E6E8EB]/80 mb-2">Billing Type</label>
+                      <div className="flex gap-3">
+                        <label className="flex items-center gap-2 px-4 py-2 bg-[#111317] border border-[#E6E8EB]/15 rounded-md cursor-pointer hover:border-[#0A5CFF] transition-colors flex-1">
+                          <input
+                            type="radio"
+                            name="billingType"
+                            value="monthly"
+                            checked={newServiceBillingType === 'monthly'}
+                            onChange={(e) => setNewServiceBillingType('monthly')}
+                            className="h-4 w-4 text-[#0A5CFF] focus:ring-[#0A5CFF] bg-[#111317]"
+                          />
+                          <span className="text-sm text-white">Monthly</span>
+                        </label>
+                        <label className="flex items-center gap-2 px-4 py-2 bg-[#111317] border border-[#E6E8EB]/15 rounded-md cursor-pointer hover:border-[#0A5CFF] transition-colors flex-1">
+                          <input
+                            type="radio"
+                            name="billingType"
+                            value="one-time"
+                            checked={newServiceBillingType === 'one-time'}
+                            onChange={(e) => setNewServiceBillingType('one-time')}
+                            className="h-4 w-4 text-[#0A5CFF] focus:ring-[#0A5CFF] bg-[#111317]"
+                          />
+                          <span className="text-sm text-white">One-Time</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={() => {
+                          setShowAddServiceModal(false);
+                          setNewServiceName('');
+                          setNewServicePrice(0);
+                          setNewServiceBillingType('monthly');
+                        }}
+                        className="flex-1 px-4 py-2 bg-[#111317] border border-[#2C3038]/40 text-white rounded-md text-sm font-medium hover:border-[#0A5CFF] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={addCustomService}
+                        className="flex-1 px-4 py-2 bg-[#0A5CFF] text-white rounded-md text-sm font-semibold hover:bg-[#0951E6] transition-colors shadow-sm"
+                      >
+                        Add Service
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Sidebar - Quote Summary (Sticky) */}
@@ -1283,9 +1516,15 @@ export default function CalculatorPage() {
                       <span className="font-medium">${calculations.sutmTotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-white">
-                      <span className="text-[#7A7F87]">Special Services</span>
-                      <span className="font-medium">${calculations.specialServicesTotal.toFixed(2)}</span>
+                      <span className="text-[#7A7F87]">Special Services (Monthly)</span>
+                      <span className="font-medium">${calculations.specialServicesMonthlyTotal.toFixed(2)}</span>
                     </div>
+                    {calculations.initialCleanTotal > 0 && (
+                      <div className="flex justify-between text-white">
+                        <span className="text-[#7A7F87]">Initial Clean (One-Time)</span>
+                        <span className="font-medium">${calculations.initialCleanTotal.toFixed(2)}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Validation Badge */}
@@ -1323,6 +1562,7 @@ export default function CalculatorPage() {
                           standardAreas: calculations.standardAreasCalc,
                           sutmBathrooms: calculations.sutmBathroomsCalc,
                           frequencyRate,
+                          initialClean,
                           specialServices,
                           preferredCleaningDays,
                           preferredCleaningTime,
@@ -1334,7 +1574,8 @@ export default function CalculatorPage() {
                             costPerClean: calculations.costPerClean,
                             standardTotal: calculations.standardTotal,
                             sutmTotal: calculations.sutmTotal,
-                            specialServicesTotal: calculations.specialServicesTotal,
+                            specialServicesMonthlyTotal: calculations.specialServicesMonthlyTotal,
+                            initialCleanTotal: calculations.initialCleanTotal,
                             subtotal: calculations.subtotal,
                             finalTotal: calculations.finalTotal,
                             finalTotalWithSurcharge: calculations.finalTotalWithSurcharge,
